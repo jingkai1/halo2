@@ -1,6 +1,7 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
+use assert_matches::assert_matches;
 use halo2::arithmetic::FieldExt;
 use halo2::circuit::{Cell, Layouter, SimpleFloorPlanner};
 use halo2::dev::MockProver;
@@ -40,6 +41,7 @@ fn plonk_api() {
         sl: TableColumn,
     }
 
+    #[allow(clippy::type_complexity)]
     trait StandardCs<FF: FieldExt> {
         fn raw_multiply<F>(
             &self,
@@ -105,39 +107,39 @@ fn plonk_api() {
                         0,
                         || {
                             value = Some(f()?);
-                            Ok(value.ok_or(Error::SynthesisError)?.0)
+                            Ok(value.ok_or(Error::Synthesis)?.0)
                         },
                     )?;
                     region.assign_advice(
                         || "lhs^4",
                         self.config.d,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.0.square().square()),
+                        || Ok(value.ok_or(Error::Synthesis)?.0.square().square()),
                     )?;
                     let rhs = region.assign_advice(
                         || "rhs",
                         self.config.b,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.1),
+                        || Ok(value.ok_or(Error::Synthesis)?.1),
                     )?;
                     region.assign_advice(
                         || "rhs^4",
                         self.config.e,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.1.square().square()),
+                        || Ok(value.ok_or(Error::Synthesis)?.1.square().square()),
                     )?;
                     let out = region.assign_advice(
                         || "out",
                         self.config.c,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.2),
+                        || Ok(value.ok_or(Error::Synthesis)?.2),
                     )?;
 
                     region.assign_fixed(|| "a", self.config.sa, 0, || Ok(FF::zero()))?;
                     region.assign_fixed(|| "b", self.config.sb, 0, || Ok(FF::zero()))?;
                     region.assign_fixed(|| "c", self.config.sc, 0, || Ok(FF::one()))?;
                     region.assign_fixed(|| "a * b", self.config.sm, 0, || Ok(FF::one()))?;
-                    Ok((lhs, rhs, out))
+                    Ok((lhs.cell(), rhs.cell(), out.cell()))
                 },
             )
         }
@@ -159,39 +161,39 @@ fn plonk_api() {
                         0,
                         || {
                             value = Some(f()?);
-                            Ok(value.ok_or(Error::SynthesisError)?.0)
+                            Ok(value.ok_or(Error::Synthesis)?.0)
                         },
                     )?;
                     region.assign_advice(
                         || "lhs^4",
                         self.config.d,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.0.square().square()),
+                        || Ok(value.ok_or(Error::Synthesis)?.0.square().square()),
                     )?;
                     let rhs = region.assign_advice(
                         || "rhs",
                         self.config.b,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.1),
+                        || Ok(value.ok_or(Error::Synthesis)?.1),
                     )?;
                     region.assign_advice(
                         || "rhs^4",
                         self.config.e,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.1.square().square()),
+                        || Ok(value.ok_or(Error::Synthesis)?.1.square().square()),
                     )?;
                     let out = region.assign_advice(
                         || "out",
                         self.config.c,
                         0,
-                        || Ok(value.ok_or(Error::SynthesisError)?.2),
+                        || Ok(value.ok_or(Error::Synthesis)?.2),
                     )?;
 
                     region.assign_fixed(|| "a", self.config.sa, 0, || Ok(FF::one()))?;
                     region.assign_fixed(|| "b", self.config.sb, 0, || Ok(FF::one()))?;
                     region.assign_fixed(|| "c", self.config.sc, 0, || Ok(FF::one()))?;
                     region.assign_fixed(|| "a * b", self.config.sm, 0, || Ok(FF::zero()))?;
-                    Ok((lhs, rhs, out))
+                    Ok((lhs.cell(), rhs.cell(), out.cell()))
                 },
             )
         }
@@ -216,10 +218,10 @@ fn plonk_api() {
             layouter.assign_region(
                 || "public_input",
                 |mut region| {
-                    let value = region.assign_advice(|| "value", self.config.a, 0, || f())?;
+                    let value = region.assign_advice(|| "value", self.config.a, 0, &mut f)?;
                     region.assign_fixed(|| "public", self.config.sp, 0, || Ok(FF::one()))?;
 
-                    Ok(value)
+                    Ok(value.cell())
                 },
             )
         }
@@ -261,9 +263,9 @@ fn plonk_api() {
             let d = meta.advice_column();
             let p = meta.instance_column();
 
-            meta.enable_equality(a.into());
-            meta.enable_equality(b.into());
-            meta.enable_equality(c.into());
+            meta.enable_equality(a);
+            meta.enable_equality(b);
+            meta.enable_equality(c);
 
             let sm = meta.fixed_column();
             let sa = meta.fixed_column();
@@ -289,7 +291,7 @@ fn plonk_api() {
              */
 
             meta.lookup(|meta| {
-                let a_ = meta.query_any(a.into(), Rotation::cur());
+                let a_ = meta.query_any(a, Rotation::cur());
                 vec![(a_, sl)]
             });
 
@@ -317,15 +319,15 @@ fn plonk_api() {
                 vec![sp * (a - p)]
             });
 
-            meta.enable_equality(sf.into());
-            meta.enable_equality(e.into());
-            meta.enable_equality(d.into());
-            meta.enable_equality(p.into());
-            meta.enable_equality(sm.into());
-            meta.enable_equality(sa.into());
-            meta.enable_equality(sb.into());
-            meta.enable_equality(sc.into());
-            meta.enable_equality(sp.into());
+            meta.enable_equality(sf);
+            meta.enable_equality(e);
+            meta.enable_equality(d);
+            meta.enable_equality(p);
+            meta.enable_equality(sm);
+            meta.enable_equality(sa);
+            meta.enable_equality(sb);
+            meta.enable_equality(sc);
+            meta.enable_equality(sp);
 
             PlonkConfig {
                 a,
@@ -356,17 +358,17 @@ fn plonk_api() {
                 let (a0, _, c0) = cs.raw_multiply(&mut layouter, || {
                     a_squared = self.a.map(|a| a.square());
                     Ok((
-                        self.a.ok_or(Error::SynthesisError)?,
-                        self.a.ok_or(Error::SynthesisError)?,
-                        a_squared.ok_or(Error::SynthesisError)?,
+                        self.a.ok_or(Error::Synthesis)?,
+                        self.a.ok_or(Error::Synthesis)?,
+                        a_squared.ok_or(Error::Synthesis)?,
                     ))
                 })?;
                 let (a1, b1, _) = cs.raw_add(&mut layouter, || {
                     let fin = a_squared.and_then(|a2| self.a.map(|a| a + a2));
                     Ok((
-                        self.a.ok_or(Error::SynthesisError)?,
-                        a_squared.ok_or(Error::SynthesisError)?,
-                        fin.ok_or(Error::SynthesisError)?,
+                        self.a.ok_or(Error::Synthesis)?,
+                        a_squared.ok_or(Error::Synthesis)?,
+                        fin.ok_or(Error::Synthesis)?,
                     ))
                 })?;
                 cs.copy(&mut layouter, a0, a1)?;
@@ -392,6 +394,26 @@ fn plonk_api() {
         a: Some(a),
         lookup_table,
     };
+
+    // Check that we get an error if we try to initialize the proving key with a value of
+    // k that is too small for the minimum required number of rows.
+    let much_too_small_params: Params<EqAffine> = Params::new(1);
+    assert_matches!(
+        keygen_vk(&much_too_small_params, &empty_circuit),
+        Err(Error::NotEnoughRowsAvailable {
+            current_k,
+        }) if current_k == 1
+    );
+
+    // Check that we get an error if we try to initialize the proving key with a value of
+    // k that is too small for the number of rows the circuit uses.
+    let slightly_too_small_params: Params<EqAffine> = Params::new(K - 1);
+    assert_matches!(
+        keygen_vk(&slightly_too_small_params, &empty_circuit),
+        Err(Error::NotEnoughRowsAvailable {
+            current_k,
+        }) if current_k == K - 1
+    );
 
     // Initialize the proving key
     let vk = keygen_vk(&params, &empty_circuit).expect("keygen_vk should not fail");

@@ -30,14 +30,12 @@ pub(in crate::plonk) struct Permuted<C: CurveAffine> {
     permuted_input_poly: Polynomial<C::Scalar, Coeff>,
     permuted_input_coset: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
     permuted_input_blind: Blind<C::Scalar>,
-    permuted_input_commitment: C,
     unpermuted_table_expressions: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
     unpermuted_table_cosets: Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>,
     permuted_table_expression: Polynomial<C::Scalar, LagrangeCoeff>,
     permuted_table_poly: Polynomial<C::Scalar, Coeff>,
     permuted_table_coset: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
     permuted_table_blind: Blind<C::Scalar>,
-    permuted_table_commitment: C,
 }
 
 #[derive(Debug)]
@@ -46,7 +44,6 @@ pub(in crate::plonk) struct Committed<C: CurveAffine> {
     product_poly: Polynomial<C::Scalar, Coeff>,
     product_coset: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
     product_blind: Blind<C::Scalar>,
-    product_commitment: C,
 }
 
 pub(in crate::plonk) struct Constructed<C: CurveAffine> {
@@ -210,14 +207,10 @@ impl<F: FieldExt> Argument<F> {
             commit_values(&permuted_table_expression);
 
         // Hash permuted input commitment
-        transcript
-            .write_point(permuted_input_commitment)
-            .map_err(|_| Error::TranscriptError)?;
+        transcript.write_point(permuted_input_commitment)?;
 
         // Hash permuted table commitment
-        transcript
-            .write_point(permuted_table_commitment)
-            .map_err(|_| Error::TranscriptError)?;
+        transcript.write_point(permuted_table_commitment)?;
 
         let permuted_input_coset = pk.vk.domain.coeff_to_extended(permuted_input_poly.clone());
         let permuted_table_coset = pk.vk.domain.coeff_to_extended(permuted_table_poly.clone());
@@ -229,14 +222,12 @@ impl<F: FieldExt> Argument<F> {
             permuted_input_poly,
             permuted_input_coset,
             permuted_input_blind,
-            permuted_input_commitment,
             unpermuted_table_expressions,
             unpermuted_table_cosets,
             permuted_table_expression,
             permuted_table_poly,
             permuted_table_coset,
             permuted_table_blind,
-            permuted_table_commitment,
         })
     }
 }
@@ -391,15 +382,12 @@ impl<C: CurveAffine> Permuted<C> {
         let product_coset = pk.vk.domain.coeff_to_extended(z.clone());
 
         // Hash product commitment
-        transcript
-            .write_point(product_commitment)
-            .map_err(|_| Error::TranscriptError)?;
+        transcript.write_point(product_commitment)?;
 
         Ok(Committed::<C> {
             permuted: self,
             product_poly: z,
             product_coset,
-            product_commitment,
             product_blind,
         })
     }
@@ -541,9 +529,7 @@ impl<C: CurveAffine> Constructed<C> {
             .chain(Some(permuted_input_inv_eval))
             .chain(Some(permuted_table_eval))
         {
-            transcript
-                .write_scalar(eval)
-                .map_err(|_| Error::TranscriptError)?;
+            transcript.write_scalar(eval)?;
         }
 
         Ok(Evaluated { constructed: self })

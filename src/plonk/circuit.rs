@@ -35,7 +35,8 @@ impl<C: ColumnType> Column<C> {
         self.index
     }
 
-    pub(crate) fn column_type(&self) -> &C {
+    /// Type of this column.
+    pub fn column_type(&self) -> &C {
         &self.column_type
     }
 }
@@ -44,18 +45,10 @@ impl<C: ColumnType> Ord for Column<C> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // This ordering is consensus-critical! The layouters rely on deterministic column
         // orderings.
-        match (self.column_type.into(), other.column_type.into()) {
+        match self.column_type.into().cmp(&other.column_type.into()) {
             // Indices are assigned within column types.
-            (Any::Instance, Any::Instance)
-            | (Any::Advice, Any::Advice)
-            | (Any::Fixed, Any::Fixed) => self.index.cmp(&other.index),
-            // Across column types, sort Instance < Advice < Fixed.
-            (Any::Instance, Any::Advice)
-            | (Any::Advice, Any::Fixed)
-            | (Any::Instance, Any::Fixed) => std::cmp::Ordering::Less,
-            (Any::Fixed, Any::Instance)
-            | (Any::Fixed, Any::Advice)
-            | (Any::Advice, Any::Instance) => std::cmp::Ordering::Greater,
+            std::cmp::Ordering::Equal => self.index.cmp(&other.index),
+            order => order,
         }
     }
 }
@@ -87,6 +80,31 @@ pub enum Any {
     Fixed,
     /// An Instance variant
     Instance,
+}
+
+impl Ord for Any {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // This ordering is consensus-critical! The layouters rely on deterministic column
+        // orderings.
+        match (self, other) {
+            (Any::Instance, Any::Instance)
+            | (Any::Advice, Any::Advice)
+            | (Any::Fixed, Any::Fixed) => std::cmp::Ordering::Equal,
+            // Across column types, sort Instance < Advice < Fixed.
+            (Any::Instance, Any::Advice)
+            | (Any::Advice, Any::Fixed)
+            | (Any::Instance, Any::Fixed) => std::cmp::Ordering::Less,
+            (Any::Fixed, Any::Instance)
+            | (Any::Fixed, Any::Advice)
+            | (Any::Advice, Any::Instance) => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for Any {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl ColumnType for Advice {}
@@ -286,6 +304,12 @@ pub enum Assigned<F> {
     Trivial(F),
     /// A value stored as a fraction to enable batch inversion.
     Rational(F, F),
+}
+
+impl<F: Field> From<&F> for Assigned<F> {
+    fn from(numerator: &F) -> Self {
+        Assigned::Trivial(*numerator)
+    }
 }
 
 impl<F: Field> From<F> for Assigned<F> {
@@ -959,6 +983,7 @@ pub struct ConstraintSystem<F: Field> {
 }
 
 /// Represents the minimal parameters that determine a `ConstraintSystem`.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct PinnedConstraintSystem<'a, F: Field> {
     num_fixed_columns: &'a usize,
@@ -1037,12 +1062,13 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn enable_constant(&mut self, column: Column<Fixed>) {
         if !self.constants.contains(&column) {
             self.constants.push(column);
-            self.enable_equality(column.into());
+            self.enable_equality(column);
         }
     }
 
     /// Enable the ability to enforce equality over cells in this column
-    pub fn enable_equality(&mut self, column: Column<Any>) {
+    pub fn enable_equality<C: Into<Column<Any>>>(&mut self, column: C) {
+        let column = column.into();
         self.query_any_index(column, Rotation::cur());
         self.permutation.add_column(column);
     }
@@ -1531,7 +1557,8 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     }
 
     /// Query an Any column at a relative position
-    pub fn query_any(&mut self, column: Column<Any>, at: Rotation) -> Expression<F> {
+    pub fn query_any<C: Into<Column<Any>>>(&mut self, column: C, at: Rotation) -> Expression<F> {
+        let column = column.into();
         match column.column_type() {
             Any::Advice => self.query_advice(Column::<Advice>::try_from(column).unwrap(), at),
             Any::Fixed => self.query_fixed(Column::<Fixed>::try_from(column).unwrap(), at),
